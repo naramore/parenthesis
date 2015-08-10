@@ -7,7 +7,7 @@
             [clojure.math.combinatorics :as combo]
             [clojure.test.check.clojure-test :refer :all]))
 
-(def check-sum 100)
+(def check-sum 400)
 
 (defn remove-nth [s n]
     (if (and ((complement nil?) n)
@@ -34,7 +34,11 @@
 
 (defn parenthesis-gen
     ([inner-gen]
-        (parenthesis-gen [\( \)] inner-gen))
+        (let [rand-p (->> parenthesis
+                          (map vals)
+                          rand-nth
+                          vec)]
+            parenthesis-gen rand-p inner-gen))
     ([[left-hand right-hand] inner-gen]
         (gen/tuple gen/string-alphanumeric
                    (gen/return left-hand)
@@ -42,19 +46,40 @@
                    (gen/return right-hand)
                    gen/string-alphanumeric)))
 
-(defn recursive-parenthesis-gen [p-type]
-    (->> (gen/recursive-gen (partial parenthesis-gen p-type)
-                            gen/string-alphanumeric)
-         (gen/fmap #(->> (flatten %)
-                         (apply str)))))
+(defn recursive-parenthesis-gen
+    ([] (recursive-parenthesis-gen parenthesis-gen))
+    ([p-gen]
+        (->> (gen/recursive-gen p-gen
+                                gen/string-alphanumeric)
+             (gen/fmap #(->> (flatten %)
+                             (apply str))))))
 
 (defspec single-type-balanced-parenthesis
     check-sum
-    (prop/for-all [p (recursive-parenthesis-gen [\[ \]])]
+    (prop/for-all [p (recursive-parenthesis-gen (partial parenthesis-gen [\[ \]]))]
         (true? (verify p))))
 
 (defspec single-type-unbalanced-parenthesis
     check-sum
-    (prop/for-all [p (recursive-parenthesis-gen [\[ \]])]
-        (let [invalid-p (remove-a-random-parenthesis p)]
-            (false? (verify invalid-p)))))
+    (prop/for-all [p (recursive-parenthesis-gen (partial parenthesis-gen [\[ \]]))]
+        (let [invalid-p (remove-a-random-parenthesis p)
+              result (verify invalid-p)]
+            (if (empty? invalid-p)
+                (true? result)
+                (false? result)))))
+
+;; these multiple parenthesis type checks use rand-nth and are therefore
+;; not completely repeatable using the given generator seed
+(defspec multiple-type-balanced-parenthesis
+    check-sum
+    (prop/for-all [p (recursive-parenthesis-gen)]
+        (true? (verify p))))
+
+(defspec multiple-type-unbalanced-parenthesis
+    check-sum
+    (prop/for-all [p (recursive-parenthesis-gen)]
+        (let [invalid-p (remove-a-random-parenthesis p)
+              result (verify invalid-p)]
+            (if (empty? invalid-p)
+                (true? result)
+                (false? result)))))
